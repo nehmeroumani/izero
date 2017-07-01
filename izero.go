@@ -1,6 +1,7 @@
-package main
+package izero
 
 import (
+	"bytes"
 	"errors"
 	"image"
 	"image/color"
@@ -9,11 +10,13 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/RobCherry/vibrant"
+	"github.com/nehmeroumani/pill.go/clean"
 	"github.com/nfnt/resize"
 	"github.com/oliamb/cutter"
 )
@@ -26,7 +29,28 @@ type Img struct {
 	GIF         *gif.GIF
 }
 
-func resizeImg(imageFile *os.File, imageName string, imageType string, targetSizes map[string][]uint, targetDir string, withCrop bool, backgroundColor *color.RGBA) (map[string]*Img, error) {
+func (this *Img) ToReader() io.Reader {
+	// create buffer
+	buff := new(bytes.Buffer)
+	var err error
+	switch this.ContentType {
+	case "image/jpeg", "image/jpg":
+		err = jpeg.Encode(buff, this.Image, nil)
+	case "image/png":
+		err = png.Encode(buff, this.Image)
+	case "image/gif":
+		err = gif.EncodeAll(buff, this.GIF)
+	}
+	if err != nil {
+		clean.Error(err)
+		return nil
+	}
+
+	// convert buffer to reader
+	return bytes.NewReader(buff.Bytes())
+}
+
+func resizeImg(imageFile io.Reader, imageName string, imageType string, targetSizes map[string][]uint, targetDir string, withCrop bool, backgroundColor *color.RGBA) (map[string]*Img, error) {
 	if imageFile != nil && imageName != "" {
 		var resizedImages map[string]*Img
 		var err error
@@ -164,7 +188,7 @@ func resizeImg(imageFile *os.File, imageName string, imageType string, targetSiz
 	return nil, errors.New("invalid_data")
 }
 
-func ResizeImgWithCroping(imageFile *os.File, imageName string, imageType string, targetSizes map[string][]uint, opts ...string) (map[string]*Img, error) {
+func ResizeImgWithCroping(imageFile io.Reader, imageName string, imageType string, targetSizes map[string][]uint, opts ...string) (map[string]*Img, error) {
 	var targetDir string
 	if opts != nil && len(opts) > 0 {
 		targetDir = opts[0]
@@ -172,7 +196,7 @@ func ResizeImgWithCroping(imageFile *os.File, imageName string, imageType string
 	return resizeImg(imageFile, imageName, imageType, targetSizes, targetDir, true, nil)
 }
 
-func ResizeImgWithoutCroping(imageFile *os.File, imageName string, imageType string, targetSizes map[string][]uint, opts ...interface{}) (map[string]*Img, error) {
+func ResizeImgWithoutCroping(imageFile io.Reader, imageName string, imageType string, targetSizes map[string][]uint, opts ...interface{}) (map[string]*Img, error) {
 	var targetDir string
 	var backgroundColor *color.RGBA = &color.RGBA{R: 0, G: 0, B: 0, A: 255}
 	if opts != nil && len(opts) > 0 {
