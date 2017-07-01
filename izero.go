@@ -1,7 +1,6 @@
-package izer
+package main
 
 import (
-	"bytes"
 	"errors"
 	"image"
 	"image/color"
@@ -10,8 +9,6 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,12 +16,6 @@ import (
 	"github.com/RobCherry/vibrant"
 	"github.com/nfnt/resize"
 	"github.com/oliamb/cutter"
-	"github.com/parnurzeal/gorequest"
-)
-
-var (
-	imageExtensions   = []string{".jpeg", ".jpg", ".gif", ".png"}
-	imageContentTypes = []string{"image/jpeg", "image/jpg", "image/gif", "image/png"}
 )
 
 type Img struct {
@@ -35,70 +26,101 @@ type Img struct {
 	GIF         *gif.GIF
 }
 
-func resizeImg(f os.FileInfo, sourceDir string, targetSizes map[string][]uint, , targetDir string, withCrop bool, backgroundColor *color.RGBA) (map[string]*Img, error) {
-	var resizedImages map[string]*Img
-	export := false
-	targetDir = strings.TrimSpace(targetDir)
-	if targetDir != "" {
-		export = true
-	}
-	file, err := os.Open(filepath.Join(sourceDir, f.Name()))
-	defer file.Close()
-	if err != nil {
-		return resizedImages, err
-	}
-	fileExtension := filepath.Ext(f.Name())
-	fileExtension = strings.ToLower(fileExtension)
-	buff := make([]byte, 512)
-	_, err = file.Read(buff)
-	if err != nil {
-		return resizedImages, err
-	}
-	isImageFile, imgType := isImageFile(buff, fileExtension)
-
-	if !isImageFile {
-		err = errors.New("invalid_image_type")
-		return resizedImages, err
-	}
-	_, err = file.Seek(0, 0)
-	if err != nil {
-		return resizedImages, err
-	}
-
-	fileName := f.Name()
-
-	if imgType == "image/gif" {
-		var ok bool
-		if export {
-			if ok, err = createFolderPath(targetDir); !ok {
-				return resizedImages, err
-			}
+func resizeImg(imageFile *os.File, imageName string, imageType string, targetSizes map[string][]uint, targetDir string, withCrop bool, backgroundColor *color.RGBA) (map[string]*Img, error) {
+	if imageFile != nil && imageName != "" {
+		var resizedImages map[string]*Img
+		var err error
+		export := false
+		targetDir = strings.TrimSpace(targetDir)
+		if targetDir != "" {
+			export = true
 		}
-		if targetSizes != nil {
-			var img *gif.GIF
-			img, err = gif.DecodeAll(file)
-			if err != nil {
-				return resizedImages, err
+		if imageType == "image/gif" {
+			var ok bool
+			if export {
+				if ok, err = createFolderPath(targetDir); !ok {
+					return resizedImages, err
+				}
 			}
-			for sizeName, size := range targetSizes {
-				if export {
-					if ok, err = createFolderPath(filepath.Join(targetDir, sizeName)); !ok {
-						return resizedImages, err
+			if targetSizes != nil {
+				var img *gif.GIF
+				img, err = gif.DecodeAll(imageFile)
+				if err != nil {
+					return resizedImages, err
+				}
+				for sizeName, size := range targetSizes {
+					if export {
+						if ok, err = createFolderPath(filepath.Join(targetDir, sizeName)); !ok {
+							return resizedImages, err
+						}
+					}
+					outGif := &gif.GIF{}
+					outGif.Delay = img.Delay
+
+					// Create a new RGBA image to hold the incremental frames.
+					firstFrame := img.Image[0]
+					r := image.Rect(0, 0, firstFrame.Bounds().Dx(), firstFrame.Bounds().Dy())
+					rgbaImg := image.NewRGBA(r)
+
+					// Resize each frame.
+					for _, frame := range img.Image {
+						bounds := frame.Bounds()
+						draw.Draw(rgbaImg, bounds, frame, bounds.Min, draw.Over)
+						m := ResizeImgToClosestSizeOfTargetSize(rgbaImg, size[0], size[1], resize.Lanczos3, withCrop)
+						if size[0] > 0 && size[1] > 0 {
+							if withCrop {
+								m, _ = FitAspectRatioWithCroping(m, int(size[0]), int(size[1]), backgroundColor)
+							} else {
+								m = FitAspectRatioWithoutCroping(m, int(size[0]), int(size[1]), backgroundColor)
+							}
+						}
+						outGif.Image = append(outGif.Image, ImageToPaletted(m, size, backgroundColor))
+					}
+					if export {
+						// Write resized gif.
+						var out *os.File
+						out, err = os.Create(filepath.Join(targetDir, sizeName, imageName))
+						if err != nil {
+							return resizedImages, err
+						}
+						defer out.Close()
+						gif.EncodeAll(out, outGif)
+					} else {
+						resizedImg := &Img{
+							Name:        imageName,
+							GIF:         outGif,
+							SizeName:    sizeName,
+							ContentType: imageType,
+						}
+						if resizedImages == nil {
+							resizedImages = map[string]*Img{}
+						}
+						resizedImages[sizeName] = resizedImg
 					}
 				}
-				outGif := &gif.GIF{}
-				outGif.Delay = img.Delay
-
-				// Create a new RGBA image to hold the incremental frames.
-				firstFrame := img.Image[0]
-				r := image.Rect(0, 0, firstFrame.Bounds().Dx(), firstFrame.Bounds().Dy())
-				rgbaImg := image.NewRGBA(r)
-
-				// Resize each frame.
-				for _, frame := range img.Image {
-					bounds := frame.Bounds()
-					draw.Draw(rgbaImg, bounds, frame, bounds.Min, draw.Over)
-					m := ResizeImgToClosestSizeOfTargetSize(rgbaImg, size[0], size[1], resize.Lanczos3, withCrop)
+				return resizedImages, nil
+			}
+			return resizedImages, err
+		} else {
+			var ok bool
+			if export {
+				if ok, err = createFolderPath(targetDir); !ok {
+					return resizedImages, err
+				}
+			}
+			if targetSizes != nil {
+				var img image.Image
+				img, _, err = image.Decode(imageFile)
+				if err != nil {
+					return resizedImages, err
+				}
+				for sizeName, size := range targetSizes {
+					if export {
+						if ok, err = createFolderPath(filepath.Join(targetDir, sizeName)); !ok {
+							return resizedImages, err
+						}
+					}
+					m := ResizeImgToClosestSizeOfTargetSize(img, size[0], size[1], resize.Lanczos3, withCrop)
 					if size[0] > 0 && size[1] > 0 {
 						if withCrop {
 							m, _ = FitAspectRatioWithCroping(m, int(size[0]), int(size[1]), backgroundColor)
@@ -106,195 +128,60 @@ func resizeImg(f os.FileInfo, sourceDir string, targetSizes map[string][]uint, ,
 							m = FitAspectRatioWithoutCroping(m, int(size[0]), int(size[1]), backgroundColor)
 						}
 					}
-					outGif.Image = append(outGif.Image, ImageToPaletted(m, size, backgroundColor))
-				}
-				if export {
-					// Write resized gif.
-					var out *os.File
-					out, err = os.Create(filepath.Join(targetDir, sizeName, fileName))
-					if err != nil {
-						return resizedImages, err
+					if export {
+						var out *os.File
+						out, err = os.Create(filepath.Join(targetDir, sizeName, imageName))
+						if err != nil {
+							return resizedImages, err
+						}
+						defer out.Close()
+						switch imageType {
+						case "image/jpeg", "image/jpg":
+							err = jpeg.Encode(out, m, nil)
+						case "image/png":
+							err = png.Encode(out, m)
+						case "image/gif":
+							err = gif.Encode(out, m, nil)
+						}
+					} else {
+						resizedImg := &Img{
+							Name:        imageName,
+							Image:       m,
+							SizeName:    sizeName,
+							ContentType: imageType,
+						}
+						if resizedImages == nil {
+							resizedImages = map[string]*Img{}
+						}
+						resizedImages[sizeName] = resizedImg
 					}
-					defer out.Close()
-					gif.EncodeAll(out, outGif)
-				} else {
-					resizedImg := &Img{
-						Name:        fileName,
-						GIF:         outGif,
-						SizeName:    sizeName,
-						ContentType: imgType,
-					}
-					if resizedImages == nil {
-						resizedImages = map[string]*Img{}
-					}
-					resizedImages[sizeName] = resizedImg
 				}
 			}
 			return resizedImages, nil
 		}
 		return resizedImages, err
-	} else {
-		var ok bool
-		if export {
-			if ok, err = createFolderPath(targetDir); !ok {
-				return resizedImages, err
-			}
-		}
-		if targetSizes != nil {
-			var img image.Image
-			img, _, err = image.Decode(file)
-			if err != nil {
-				return resizedImages, err
-			}
-			for sizeName, size := range targetSizes {
-				if export {
-					if ok, err = createFolderPath(filepath.Join(targetDir, sizeName)); !ok {
-						return resizedImages, err
-					}
-				}
-				m := ResizeImgToClosestSizeOfTargetSize(img, size[0], size[1], resize.Lanczos3, withCrop)
-				if size[0] > 0 && size[1] > 0 {
-					if withCrop {
-						m, _ = FitAspectRatioWithCroping(m, int(size[0]), int(size[1]), backgroundColor)
-					} else {
-						m = FitAspectRatioWithoutCroping(m, int(size[0]), int(size[1]), backgroundColor)
-					}
-				}
-				if export {
-					var out *os.File
-					out, err = os.Create(filepath.Join(targetDir, sizeName, fileName))
-					if err != nil {
-						return resizedImages, err
-					}
-					defer out.Close()
-					switch imgType {
-					case "image/jpeg", "image/jpg":
-						err = jpeg.Encode(out, m, nil)
-					case "image/png":
-						err = png.Encode(out, m)
-					case "image/gif":
-						err = gif.Encode(out, m, nil)
-					}
-				} else {
-					resizedImg := &Img{
-						Name:        fileName,
-						Image:       m,
-						SizeName:    sizeName,
-						ContentType: imgType,
-					}
-					if resizedImages == nil {
-						resizedImages = map[string]*Img{}
-					}
-					resizedImages[sizeName] = resizedImg
-				}
-			}
-		}
-		return resizedImages, nil
 	}
-	return resizedImages, err
+	return nil, errors.New("invalid_data")
 }
 
-func ResizeImgWithCroping(f os.FileInfo, sourceDir string, targetSizes map[string][]uint, opts ...string) (map[string]*Img, error) {
-	var targetDir
-	if opts != nil && len(opts) > 0{
+func ResizeImgWithCroping(imageFile *os.File, imageName string, imageType string, targetSizes map[string][]uint, opts ...string) (map[string]*Img, error) {
+	var targetDir string
+	if opts != nil && len(opts) > 0 {
 		targetDir = opts[0]
 	}
-	return resizeImg(f, sourceDir, targetSizes, targetDir, true, nil)
+	return resizeImg(imageFile, imageName, imageType, targetSizes, targetDir, true, nil)
 }
 
-func ResizeImgWithoutCroping(f os.FileInfo, sourceDir string, targetSizes map[string][]uint, opts ...interface) (map[string]*Img, error) {
+func ResizeImgWithoutCroping(imageFile *os.File, imageName string, imageType string, targetSizes map[string][]uint, opts ...interface{}) (map[string]*Img, error) {
 	var targetDir string
 	var backgroundColor *color.RGBA = &color.RGBA{R: 0, G: 0, B: 0, A: 255}
-	if opts != nil && len(opts) > 0{
-		targetDir = opts[0].(string)
-		if len(opts) > 1{
-			backgroundColor = opts[1].(*color.RGBA)
+	if opts != nil && len(opts) > 0 {
+		backgroundColor = opts[0].(*color.RGBA)
+		if len(opts) > 1 {
+			targetDir = opts[1].(string)
 		}
 	}
-	return resizeImg(f, sourceDir, targetSizes, targetDir, false, nil)
-}
-
-func ResizeImgFromURL(u string, targetSize []uint, withCrop bool, backgroundColor *color.RGBA) (*Img, error) {
-	var resizedImage *Img
-	imgUrl, err := url.Parse(u)
-	if err != nil {
-		return resizedImage, err
-	}
-	_, imgData, errs := gorequest.New().Get(u).End()
-	if errs != nil && len(errs) > 0 {
-		return resizedImage, errs[0]
-	}
-	fileExtension := filepath.Ext(imgUrl.Path)
-	fileExtension = strings.ToLower(fileExtension)
-
-	isImageFile, imgType := isImageFile([]byte(imgData), fileExtension)
-
-	if !isImageFile {
-		err = errors.New("invalid_image_type")
-		return resizedImage, err
-	}
-
-	if imgType == "image/gif" {
-		if targetSize != nil && len(targetSize) > 1 {
-			var img *gif.GIF
-			b := bytes.NewBufferString(imgData)
-			img, err = gif.DecodeAll(b)
-			if err != nil {
-				return resizedImage, err
-			}
-			outGif := &gif.GIF{}
-			outGif.Delay = img.Delay
-
-			// Create a new RGBA image to hold the incremental frames.
-			firstFrame := img.Image[0]
-			r := image.Rect(0, 0, firstFrame.Bounds().Dx(), firstFrame.Bounds().Dy())
-			rgbaImg := image.NewRGBA(r)
-
-			// Resize each frame.
-			for _, frame := range img.Image {
-				bounds := frame.Bounds()
-				draw.Draw(rgbaImg, bounds, frame, bounds.Min, draw.Over)
-				m := ResizeImgToClosestSizeOfTargetSize(rgbaImg, targetSize[0], targetSize[1], resize.Lanczos3, withCrop)
-				if targetSize[0] > 0 && targetSize[1] > 0 {
-					if withCrop {
-						m, _ = FitAspectRatioWithCroping(m, int(targetSize[0]), int(targetSize[1]), backgroundColor)
-					} else {
-						m = FitAspectRatioWithoutCroping(m, int(targetSize[0]), int(targetSize[1]), backgroundColor)
-					}
-				}
-				outGif.Image = append(outGif.Image, ImageToPaletted(m, targetSize, backgroundColor))
-			}
-			resizedImage = &Img{
-				GIF:         outGif,
-				ContentType: imgType,
-			}
-			return resizedImage, nil
-		}
-		return resizedImage, err
-	} else {
-		if targetSize != nil && len(targetSize) > 1 {
-			var img image.Image
-			b := bytes.NewBufferString(imgData)
-			img, _, err = image.Decode(b)
-			if err != nil {
-				return resizedImage, err
-			}
-			m := ResizeImgToClosestSizeOfTargetSize(img, targetSize[0], targetSize[1], resize.Lanczos3, withCrop)
-			if targetSize[0] > 0 && targetSize[1] > 0 {
-				if withCrop {
-					m, _ = FitAspectRatioWithCroping(m, int(targetSize[0]), int(targetSize[1]), backgroundColor)
-				} else {
-					m = FitAspectRatioWithoutCroping(m, int(targetSize[0]), int(targetSize[1]), backgroundColor)
-				}
-			}
-			resizedImage = &Img{
-				Image:       m,
-				ContentType: imgType,
-			}
-		}
-		return resizedImage, nil
-	}
-	return resizedImage, err
+	return resizeImg(imageFile, imageName, imageType, targetSizes, targetDir, false, backgroundColor)
 }
 
 func ResizeImgToClosestSizeOfTargetSize(img image.Image, targetW uint, targetH uint, interp resize.InterpolationFunction, withCrop bool) image.Image {
@@ -456,39 +343,6 @@ func createFolderPath(path string) (bool, error) {
 		}
 	}
 	return true, err
-}
-
-func detectContentType(data []byte) string {
-	if data != nil {
-		if len(data) > 512 {
-			data = data[:512]
-		}
-		filetype := http.DetectContentType(data)
-		return filetype
-	}
-	return ""
-}
-
-func isImageFile(data []byte, fileExtension string) (bool, string) {
-	isValidExtension := false
-	isValidContentType := false
-	imgType := ""
-	for _, imageExtension := range imageExtensions {
-		if imageExtension == fileExtension {
-			isValidExtension = true
-			break
-		}
-	}
-	if isValidExtension {
-		imgType = detectContentType(data)
-		for _, imageContentType := range imageContentTypes {
-			if imgType == imageContentType {
-				isValidContentType = true
-				break
-			}
-		}
-	}
-	return isValidContentType && isValidExtension, imgType
 }
 
 func ImageToPaletted(img image.Image, size []uint, backgroundColor *color.RGBA) *image.Paletted {
