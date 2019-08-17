@@ -15,7 +15,6 @@ import (
 )
 
 func ResizeImage(imageFile io.Reader, imageName string, imageType string, targetSizes []*ImageSize, destPath string) (map[string]*ResizedImage, map[string]error, error) {
-
 	if imageFile != nil && imageName != "" && targetSizes != nil {
 		resizedImages := map[string]*ResizedImage{}
 		var wg sync.WaitGroup
@@ -71,9 +70,9 @@ func resizeStaticImg(img image.Image, imageName string, imageType string, imgSiz
 		return nil, err
 	}
 	m := ResizeImgToClosestSizeOfTargetSize(img, imgSize, resize.Lanczos3)
-	if imgSize.ResizeType == "fit_with_crop" {
+	if imgSize.Mode == "fit_with_crop" {
 		m, _ = FitAspectRatioWithCroping(m, imgSize)
-	} else if imgSize.ResizeType == "fit" {
+	} else if imgSize.Mode == "fit" {
 		m = FitAspectRatioWithoutCroping(m, imgSize)
 	}
 
@@ -109,9 +108,9 @@ func resizeDynamicImg(gifImg *gif.GIF, imageName string, imageType string, imgSi
 		bounds := frame.Bounds()
 		draw.Draw(rgbaImg, bounds, frame, bounds.Min, draw.Over)
 		m := ResizeImgToClosestSizeOfTargetSize(rgbaImg, imgSize, resize.Lanczos3)
-		if imgSize.ResizeType == "fit_with_crop" {
+		if imgSize.Mode == "fit_with_crop" {
 			m, _ = FitAspectRatioWithCroping(m, imgSize)
-		} else if imgSize.ResizeType == "fit" {
+		} else if imgSize.Mode == "fit" {
 			m = FitAspectRatioWithoutCroping(m, imgSize)
 		}
 		outGif.Image = append(outGif.Image, ImageToPaletted(m, imgSize))
@@ -160,7 +159,7 @@ func ResizeImgToClosestSizeOfTargetSize(img image.Image, imgSize *ImageSize, int
 			origHeight *= scale
 		}
 
-		if imgSize.ResizeType == "fit_with_crop" {
+		if imgSize.Mode == "fit_with_crop" {
 			if origWidth < targetWidth {
 				//origWidth -> targetWidth
 				//origHeight -> (newHeight)
