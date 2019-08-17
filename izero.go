@@ -7,7 +7,6 @@ import (
 	"image/draw"
 	"image/gif"
 	"io"
-	"os"
 	"sync"
 
 	"github.com/RobCherry/vibrant"
@@ -281,19 +280,6 @@ func FitAspectRatioWithCroping(img image.Image, imgSize *ImageSize) (image.Image
 		return rgba, nil
 	}
 	return m, nil
-}
-
-func createFolderPath(path string) (bool, error) {
-	_, err := os.Stat(path)
-	if err == nil {
-		return true, nil
-	}
-	if os.IsNotExist(err) {
-		if err = os.MkdirAll(path, 0777); err != nil {
-			return false, err
-		}
-	}
-	return true, err
 }
 
 func ImageToPaletted(img image.Image, imgSize *ImageSize) *image.Paletted {

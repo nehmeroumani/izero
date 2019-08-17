@@ -42,7 +42,7 @@ func (rImg *ResizedImage) ToReader() (io.Reader, error) {
 
 func (rImg *ResizedImage) saveTo(dest string) error {
 	dest = strings.TrimSpace(dest)
-	if ok, err := createFolderPath(filepath.Join(dest, rImg.Size.Name)); !ok {
+	if err := createFolderPath(filepath.Join(dest, rImg.Size.Name)); err != nil {
 		return err
 	}
 	imgFile, err := os.Create(filepath.Join(dest, rImg.Size.Name, rImg.Name))
@@ -59,4 +59,17 @@ func (rImg *ResizedImage) saveTo(dest string) error {
 		err = gif.EncodeAll(imgFile, rImg.DynamicImage)
 	}
 	return err
+}
+
+func createFolderPath(path string) error {
+	_, err := os.Stat(path)
+	if err == nil {
+		return nil
+	}
+	if os.IsNotExist(err) {
+		if err = os.MkdirAll(path, 0777); err != nil {
+			return err
+		}
+	}
+	return nil
 }
