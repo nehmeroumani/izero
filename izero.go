@@ -240,17 +240,17 @@ func FitAspectRatioWithoutCroping(img image.Image, imgSize *ImageSize) image.Ima
 		}
 		ep := image.Point{imgWidth, imgHeight}
 		r2 := image.Rectangle{sp, sp.Add(ep)}
-		if imgSize.BackgroundColor != nil {
-			draw.Draw(rgba, rgba.Bounds(), &image.Uniform{*imgSize.BackgroundColor}, image.ZP, draw.Src)
+		if imgSize.Background != nil {
+			draw.Draw(rgba, rgba.Bounds(), &image.Uniform{*imgSize.Background}, image.ZP, draw.Src)
 			draw.Draw(rgba, r2, img, image.ZP, draw.Over)
 		} else {
 			draw.Draw(rgba, r2, img, image.ZP, draw.Src)
 		}
 		return rgba
-	} else if imgSize.BackgroundColor != nil {
+	} else if imgSize.Background != nil {
 		r1 := image.Rectangle{image.Point{0, 0}, image.Point{targetW, targetH}}
 		rgba := image.NewRGBA(r1)
-		draw.Draw(rgba, rgba.Bounds(), &image.Uniform{*imgSize.BackgroundColor}, image.ZP, draw.Src)
+		draw.Draw(rgba, rgba.Bounds(), &image.Uniform{*imgSize.Background}, image.ZP, draw.Src)
 		draw.Draw(rgba, r1, img, imgBounds.Min, draw.Over)
 		return rgba
 	}
@@ -268,11 +268,11 @@ func FitAspectRatioWithCroping(img image.Image, imgSize *ImageSize) (image.Image
 	if err != nil {
 		return nil, err
 	}
-	if imgSize.BackgroundColor != nil {
+	if imgSize.Background != nil {
 		mBounds := m.Bounds()
 		r1 := image.Rectangle{image.Point{0, 0}, image.Point{targetW, targetH}}
 		rgba := image.NewRGBA(r1)
-		draw.Draw(rgba, rgba.Bounds(), &image.Uniform{*imgSize.BackgroundColor}, image.ZP, draw.Src)
+		draw.Draw(rgba, rgba.Bounds(), &image.Uniform{*imgSize.Background}, image.ZP, draw.Src)
 		draw.Draw(rgba, r1, m, mBounds.Min, draw.Over)
 		return rgba, nil
 	}
@@ -289,8 +289,8 @@ func ImageToPaletted(img image.Image, imgSize *ImageSize) *image.Paletted {
 		bounds := img.Bounds()
 		pal := make(color.Palette, 0, 2)
 		pal = append(pal, color.Transparent)
-		if imgSize.BackgroundColor != nil {
-			pal = append(pal, *imgSize.BackgroundColor)
+		if imgSize.Background != nil {
+			pal = append(pal, *imgSize.Background)
 		}
 		r := image.Rectangle{Min: image.Point{X: 0, Y: 0}, Max: image.Point{X: int(imgSize.Dimensions[0]), Y: int(imgSize.Dimensions[1])}}
 		palettedImage := image.NewPaletted(r, pal)
@@ -307,8 +307,8 @@ func ImageToPaletted(img image.Image, imgSize *ImageSize) *image.Paletted {
 			if pal, k = img.ColorModel().(color.Palette); !k {
 				pal = palette.Plan9[:opts.NumColors]
 				pal[opts.NumColors-1] = color.Transparent
-				if imgSize.BackgroundColor != nil {
-					pal[opts.NumColors-2] = *imgSize.BackgroundColor
+				if imgSize.Background != nil {
+					pal[opts.NumColors-2] = *imgSize.Background
 				}
 			}
 			palettedImage.Palette = pal
