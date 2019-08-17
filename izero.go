@@ -15,45 +15,43 @@ import (
 )
 
 func ResizeImage(imageFile io.Reader, imageName string, imageType string, targetSizes []*ImageSize, destPath string) (map[string]*ResizedImage, map[string]error, error) {
-	if imageFile != nil && imageName != "" {
+
+	if imageFile != nil && imageName != "" && targetSizes != nil {
 		resizedImages := map[string]*ResizedImage{}
 		var wg sync.WaitGroup
 		errs := map[string]error{}
-		if targetSizes != nil {
-			if imageType == "image/gif" {
-				gifImg, err := gif.DecodeAll(imageFile)
-				if err != nil {
-					return nil, nil, err
-				}
-				wg.Add(len(targetSizes))
-				for _, imgSize := range targetSizes {
-					go func(imgSize *ImageSize) {
-						defer wg.Done()
-						if resizedImg, err := resizeDynamicImg(gifImg, imageName, imageType, imgSize, destPath); err == nil {
-							resizedImages[imgSize.Name] = resizedImg
-						} else {
-							errs[imgSize.Name] = err
-						}
-					}(imgSize)
-				}
+		if imageType == "image/gif" {
+			gifImg, err := gif.DecodeAll(imageFile)
+			if err != nil {
+				return nil, nil, err
+			}
+			wg.Add(len(targetSizes))
+			for _, imgSize := range targetSizes {
+				go func(imgSize *ImageSize) {
+					defer wg.Done()
+					if resizedImg, err := resizeDynamicImg(gifImg, imageName, imageType, imgSize, destPath); err == nil {
+						resizedImages[imgSize.Name] = resizedImg
+					} else {
+						errs[imgSize.Name] = err
+					}
+				}(imgSize)
+			}
+		} else {
+			img, _, err := image.Decode(imageFile)
+			if err != nil {
+				return nil, nil, err
+			}
+			wg.Add(len(targetSizes))
+			for _, imgSize := range targetSizes {
+				go func(imgSize *ImageSize) {
+					defer wg.Done()
+					if resizedImg, err := resizeStaticImg(img, imageName, imageType, imgSize, destPath); err == nil {
+						resizedImages[imgSize.Name] = resizedImg
+					} else {
+						errs[imgSize.Name] = err
+					}
 
-			} else {
-				img, _, err := image.Decode(imageFile)
-				if err != nil {
-					return nil, nil, err
-				}
-				wg.Add(len(targetSizes))
-				for _, imgSize := range targetSizes {
-					go func(imgSize *ImageSize) {
-						defer wg.Done()
-						if resizedImg, err := resizeStaticImg(img, imageName, imageType, imgSize, destPath); err == nil {
-							resizedImages[imgSize.Name] = resizedImg
-						} else {
-							errs[imgSize.Name] = err
-						}
-
-					}(imgSize)
-				}
+				}(imgSize)
 			}
 		}
 		wg.Wait()
