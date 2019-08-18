@@ -218,6 +218,12 @@ func ResizeImgToClosestSizeOfTargetSize(img image.Image, imgSize *ImageSize, int
 				newWidth = origWidth
 			}
 		}
+	} else if imgSize.Mode == "fit_width" {
+		newHeight = (origHeight * targetWidth) / origWidth
+		newWidth = targetWidth
+	} else if imgSize.Mode == "fit_height" {
+		newWidth = (origWidth * targetHeight) / origHeight
+		newHeight = targetHeight
 	}
 	return resize.Resize(uint(newWidth), uint(newHeight), img, interp)
 }
