@@ -3,11 +3,11 @@ package izero
 import "image/color"
 
 type ImageSize struct {
-	Name       string      `yaml:"name", json:"name"`
-	Dimensions []uint      `yaml:"dimensions", json:"dimensions"`
-	Mode       string      `yaml:"mode", json:"mode"`
-	Quality    int         `yaml:"quality", json:"quality"`
-	Background *color.RGBA `yaml:"background", json:"background"`
+	Name       string      `yaml:"name" json:"name"`
+	Dimensions []uint      `yaml:"dimensions" json:"dimensions"`
+	Mode       string      `yaml:"mode" json:"mode"`
+	Quality    int         `yaml:"quality" json:"quality"`
+	Background *color.RGBA `yaml:"background" json:"background"`
 }
 
 func isValidSize(size *ImageSize) error {
